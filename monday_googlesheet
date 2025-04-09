@@ -1,0 +1,124 @@
+const MONDAY_API_KEY = "Bearer MONDAY_API_KEY"; //Replace with your actual API key - keep the prefix Bearer
+const BOARD_ID = MONDAY.COM_BOARD_ID; //Replace MONDAY.COM_BOARD_ID with your board ID
+const SHEET_NAME = "GOOGLE_SHEET_NAME"; //Replace GOOGLE_SHEET_NAME with google sheet name
+const ID_COLUMN = 22; // Column V or any column at the end of your columns of data, create one if needed and hide
+
+// Add your spreadsheet ID here
+const SPREADSHEET_ID = "SPREADSHEET_ID"; // Replace with your actual spreadsheet ID
+
+function syncCavendishJobLogToSheet() {
+  const url = "https://api.monday.com/v2";
+
+  let allItems = [];
+  let hasMore = true;
+  let cursor = null;
+
+  while (hasMore) {
+    const query = `
+      query {
+        boards(ids: ${BOARD_ID}) {
+          items_page(limit: 100${cursor ? `, cursor: "${cursor}"` : ""}) {
+            cursor
+            items {
+              id
+              name
+              created_at
+              column_values {
+                id
+                text
+                column {
+                  title
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const options = {
+      method: "post",
+      contentType: "application/json",
+      headers: { Authorization: MONDAY_API_KEY },
+      payload: JSON.stringify({ query: query }),
+      muteHttpExceptions: true
+    };
+
+    const response = UrlFetchApp.fetch(url, options);
+    const responseText = response.getContentText();
+    const responseCode = response.getResponseCode();
+
+    if (responseCode !== 200) {
+      Logger.log("Error response: " + responseText);
+      throw new Error(`API request failed with status ${responseCode}: ${responseText}`);
+    }
+
+    const data = JSON.parse(responseText);
+    const page = data.data.boards[0].items_page;
+
+    allItems = allItems.concat(page.items);
+
+    if (page.cursor) {
+      cursor = page.cursor;
+    } else {
+      hasMore = false;
+    }
+  }
+
+  // Spreadsheet setup
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  if (!ss) throw new Error("❌ Spreadsheet not found");
+
+  let sheet = ss.getSheetByName(SHEET_NAME);
+  if (!sheet) {
+    Logger.log(`Sheet "${SHEET_NAME}" not found. Creating it.`);
+    sheet = ss.insertSheet(SHEET_NAME);
+
+    const firstItem = allItems[0];
+    const headers = ["Name", "Date"];
+    firstItem.column_values.forEach(col => {
+      if (col.column && col.column.title) headers.push(col.column.title);
+    });
+    headers.push("ID");
+    sheet.appendRow(headers);
+  }
+
+  const allData = sheet.getDataRange().getValues();
+  const headers = allData[0];
+  const idColumnIndex = headers.indexOf("ID");
+  if (idColumnIndex === -1) throw new Error("❌ 'ID' column not found");
+
+  const existingIDs = allData.slice(1).map(row => String(row[idColumnIndex]));
+
+  function formatItem(item) {
+    const row = Array(headers.length).fill("");
+
+    const nameIndex = headers.indexOf("Name");
+    if (nameIndex >= 0) row[nameIndex] = item.name;
+
+    const dateIndex = headers.indexOf("Date");
+    if (dateIndex >= 0) row[dateIndex] = new Date(item.created_at).toLocaleDateString();
+
+    row[idColumnIndex] = item.id;
+
+    item.column_values.forEach(colValue => {
+      if (colValue.column && colValue.column.title) {
+        const colIndex = headers.indexOf(colValue.column.title);
+        if (colIndex >= 0) row[colIndex] = colValue.text || "";
+      }
+    });
+
+    return row;
+  }
+
+  let newCount = 0;
+
+  allItems.forEach(item => {
+    if (!existingIDs.includes(String(item.id))) {
+      sheet.appendRow(formatItem(item));
+      newCount++;
+    }
+  });
+
+  Logger.log(`✅ Synced ${newCount} new item(s) to sheet.`);
+}
