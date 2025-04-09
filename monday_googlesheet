@@ -1,7 +1,7 @@
 const MONDAY_API_KEY = "Bearer MONDAY_API_KEY"; //Replace with your actual API key - keep the prefix Bearer
 const BOARD_ID = MONDAY.COM_BOARD_ID; //Replace MONDAY.COM_BOARD_ID with your board ID
 const SHEET_NAME = "GOOGLE_SHEET_NAME"; //Replace GOOGLE_SHEET_NAME with google sheet name
-const ID_COLUMN = 22; // Column V or any column at the end of your columns of data, create one if needed and hide
+const ID_COLUMN = 22; // Column number (1-based) where the unique item ID is stored
 
 // Add your spreadsheet ID here
 const SPREADSHEET_ID = "SPREADSHEET_ID"; // Replace with your actual spreadsheet ID
